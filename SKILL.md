@@ -177,6 +177,36 @@ longdateformat = %Y-%m-%d
 - Create table with required fields (see schema above)
 - Configure datetime fields `开始时间`/`结束时间` with `date_formatter: "yyyy/MM/dd HH:mm"` to show time
 
+## Operation Logging & Statistics
+
+All operations are logged to `~/.personal-assistant/operations.log` in JSONL format.
+
+Each log entry includes:
+- `timestamp`: UTC milliseconds
+- `utc_time`: ISO 8601 UTC time
+- `cst_time`: ISO 8601 China time
+- `operation`: Type of operation (`create`/`update`/`delete`/`complete`/`reschedule`/`sync`)
+- `task_name`: Task/event name
+- `record_id`: Feishu record ID
+- `details`: Extra details (e.g. old/new time for reschedule)
+
+Statistics are stored in `~/.personal-assistant/stats.json`:
+- `completed_by_day`: Completed count per day (CST)
+- `completed_by_month`: Completed count per month (CST)
+- `total_completed`: Total completed all time
+- `created_total`: Total created all time
+
+**Every write operation must update log and statistics**:
+```python
+from memory import OperationLog, Statistics
+
+oplog = OperationLog()
+oplog.log('create', task_name, record_id, details={'start_time': start_ts})
+
+stats = Statistics()
+stats.record_created()
+```
+
 ## Common Issues & Solutions
 
 1. **iOS shows wrong time**:
