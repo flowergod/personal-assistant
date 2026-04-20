@@ -57,6 +57,18 @@ Feishu Bitable (single source) ↔ vdirsyncer/local .ics ↔ iCloud Calendar (ph
 - Feishu: `2026-04-26 13:00 CST` → UTC → `1777179600000` ms → stored in Bitable
 - iCloud: `DTSTART;TZID=Asia/Shanghai:20260426T130000` → stored in .ics
 
+## Sync Strategy & Conflict Resolution
+
+**Core rule**: Feishu Bitable is the single source of truth. iCloud calendar is only for phone client display.
+
+| Conflict scenario | Resolution |
+|-----------------|------------|
+| Feishu modified, iCloud not modified | Feishu → overwrite iCloud |
+| iCloud modified, Feishu not modified | Manual trigger pull → iCloud → overwrite Feishu |
+| Both modified | **Feishu wins** → Feishu overwrite iCloud |
+| Feishu deleted, iCloud still exists | Feishu delete → delete in iCloud |
+| iCloud deleted, Feishu still exists | Pull sync → Feishu mark as deleted |
+
 ## Two-way Sync Process
 
 ### 1. iCloud → Feishu (Pull Changes)
@@ -72,6 +84,7 @@ Steps:
    - ≥ 2 occurrences with same name → "每周"
    - Contains "医院预约" → "不定期"
    - Otherwise → "不循环"
+5. Log the sync operation to operation log
 ```
 
 ### 2. Feishu → iCloud (Push Changes)
@@ -82,8 +95,15 @@ Steps:
 2. For each record:
    - Generate/update .ics file with correct timezone format
    - Keep original UID for incremental sync
+   - If record deleted in Feishu → delete local .ics file
 3. vdirsyncer sync <pair-name>    # Push all changes to iCloud
+4. Log the sync operation to operation log
 ```
+
+### Delete Handling
+
+- When Feishu record is deleted via assistant → delete corresponding .ics file by UID → sync → iCloud deletes it
+- When Feishu record is deleted manually → next full sync will detect missing UID → delete from iCloud
 
 ## Daily Workflow
 
@@ -120,6 +140,36 @@ Automatic inference:
 - If no end time → default 1 hour duration
 - If no date → defaults to today/tomorrow based on context
 - If contains "每周"/"每月" → auto set cycle type
+
+## Operation Logging & Statistics
+
+All operations are logged to `~/.personal-assistant/operations.log` in JSONL format.
+
+Each log entry includes:
+- `timestamp`: UTC milliseconds
+- `utc_time`: ISO 8601 UTC time
+- `cst_time`: ISO 8601 China time
+- `operation`: Type of operation (`create`/`update`/`delete`/`complete`/`reschedule`/`sync`)
+- `task_name`: Task/event name
+- `record_id`: Feishu record ID
+- `details`: Extra details (e.g. old/new time for reschedule)
+
+Statistics are stored in `~/.personal-assistant/stats.json`:
+- `completed_by_day`: Completed count per day (CST)
+- `completed_by_month`: Completed count per month (CST)
+- `total_completed`: Total completed all time
+- `created_total`: Total created all time
+
+**Every write operation must update log and statistics**:
+```python
+from memory import OperationLog, Statistics
+
+oplog = OperationLog()
+oplog.log('create', task_name, record_id, details={'start_time': start_ts})
+
+stats = Statistics()
+stats.record_created()
+```
 
 ## Configuration
 
@@ -176,36 +226,6 @@ longdateformat = %Y-%m-%d
 - Create Bitable app
 - Create table with required fields (see schema above)
 - Configure datetime fields `开始时间`/`结束时间` with `date_formatter: "yyyy/MM/dd HH:mm"` to show time
-
-## Operation Logging & Statistics
-
-All operations are logged to `~/.personal-assistant/operations.log` in JSONL format.
-
-Each log entry includes:
-- `timestamp`: UTC milliseconds
-- `utc_time`: ISO 8601 UTC time
-- `cst_time`: ISO 8601 China time
-- `operation`: Type of operation (`create`/`update`/`delete`/`complete`/`reschedule`/`sync`)
-- `task_name`: Task/event name
-- `record_id`: Feishu record ID
-- `details`: Extra details (e.g. old/new time for reschedule)
-
-Statistics are stored in `~/.personal-assistant/stats.json`:
-- `completed_by_day`: Completed count per day (CST)
-- `completed_by_month`: Completed count per month (CST)
-- `total_completed`: Total completed all time
-- `created_total`: Total created all time
-
-**Every write operation must update log and statistics**:
-```python
-from memory import OperationLog, Statistics
-
-oplog = OperationLog()
-oplog.log('create', task_name, record_id, details={'start_time': start_ts})
-
-stats = Statistics()
-stats.record_created()
-```
 
 ## Common Issues & Solutions
 
