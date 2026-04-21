@@ -24,12 +24,14 @@ Feishu Bitable (single source) ↔ vdirsyncer/local .ics ↔ iCloud Calendar (ph
 | Field Name | Type | Description |
 |------------|------|-------------|
 | `序号` | Text | Auto-increment |
-| `任务名称` | Text | Task/event title |
+| `项目` | Text | Level 1: filename / top-level project |
+| `子项目` | Text | Level 2: sub-project under filename |
+| `任务名称` | Text | Level 3: specific task/event title |
 | `分组` | SingleSelect | First-level grouping (日程表/工作/生活/其他) |
 | `标签` | MultiSelect | Second-level tags |
 | `优先级` | SingleSelect | 高/中/低 |
-| `状态` | SingleSelect | 待执行/进行中/已完成/推迟 |
-| `循环类型` | SingleSelect | 不循环/每周/每两周/每月/每年/不定期 |
+| `状态` | SingleSelect | 待规划/待执行/进行中/已完成/推迟 |
+| `循环类型` | SingleSelect | 不循环/每周一/每周五/每周/每月/每年/不定期 |
 | `日历分类` | SingleSelect | 不同步/个人/工作/家庭共享 |
 | `完成次数` | Number | How many times completed (for recurring) |
 | `计划日期` | Date | Planned date |
@@ -109,11 +111,18 @@ Steps:
 
 ### Morning (8:00 CST)
 1. Query Bitable for today's (and tomorrow's if needed) events
-   - Filter: `计划日期 == today AND 状态 == 待执行`
-2. Group by calendar category
-3. Send formatted message to user with:
-   - Today's calendar events (start time + title)
-   - Today's todos (no time)
+   - Filter 1: `计划日期 == today` → today's calendar events
+   - Filter 2: Recurring tasks that fall on today (weekly on Monday/Friday, monthly, etc.) → today's non-calendar todos
+   - Filter 3: `优先级 == 高 AND 状态 == 待规划` → unassigned high-priority tasks
+   - Filter 4: `状态 == 进行中` → in-progress projects to track
+2. Send formatted message to user in 4 sections:
+   1. **今日日历事务**：计划日期为今天的任务（有明确时间）
+   2. **今日非日历待处理**：周期性触发的任务（无特定时间）
+   3. **未明确高优先级**：状态为待规划的高优先级任务
+   4. **进行中项目跟踪**：当前进行中需要持续跟进的项目任务
+
+**Three-level hierarchy display**:
+- Always show: `项目 / 子项目` · 任务名称
 
 ### Evening (8:00 CST)
 1. Query today's pending tasks/events
@@ -286,6 +295,6 @@ Add to crontab:
 ```
 # Morning report at 8:00 CST (UTC 0:00)
 0 0 * * * /path/to/daily-morning-report.sh >> /var/log/personal-assistant.log 2>&1
-# Evening confirmation at 8:00 CST (UTC 12:00)
-0 12 * * * /path/to/evening-confirmation.sh >> /var/log/personal-assistant.log 2>&1
+# Evening confirmation at 17:00 CST (UTC 9:00)
+0 9 * * * /path/to/evening-confirmation.sh >> /var/log/personal-assistant.log 2>&1
 ```
