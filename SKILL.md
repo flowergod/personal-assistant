@@ -232,7 +232,9 @@ longdateformat = %Y-%m-%d
 
 ### Required: Feishu Bitable
 
-- Create Bitable app
+- **App Token**: `YmMcb4PUlaTIAmshS6EcFqPenff`
+- **Table ID**: `tbllwg2t4sEJ64i1`
+- **URL**: https://my.feishu.cn/base/YmMcb4PUlaTIAmshS6EcFqPenff?table=tbllwg2t4sEJ64i1&view=vewBOvxLXA
 - Create table with required fields (see schema above)
 - Configure datetime fields `开始时间`/`结束时间` with `date_formatter: "yyyy/MM/dd HH:mm"` to show time
 
