@@ -42,21 +42,100 @@ def parse_datetime_cst(dt_str):
     dt = datetime.datetime.strptime(dt_str, '%Y-%m-%d %H:%M')
     return tz.localize(dt)
 
-def create_ics(uid: str, title: str, start_dt_cst: datetime.datetime, end_dt_cst: datetime.datetime, filepath: str):
-    """Create .ics file with correct timezone"""
+def get_complete_timezone_def():
+    """Return complete VTIMEZONE block for Asia/Shanghai, same as iOS generates"""
+    return """BEGIN:VTIMEZONE
+TZID:Asia/Shanghai
+X-LIC-LOCATION:Asia/Shanghai
+BEGIN:STANDARD
+DTSTART:19010101T000000
+RDATE:19010101T000000
+TZNAME:CST
+TZOFFSETFROM:+080543
+TZOFFSETTO:+0800
+END:STANDARD
+BEGIN:DAYLIGHT
+DTSTART:19400601T000000
+RDATE:19400601T000000
+RDATE:19410315T000000
+RDATE:19420131T000000
+RDATE:19460515T000000
+RDATE:19470415T000000
+RDATE:19860504T020000
+TZNAME:CDT
+TZOFFSETFROM:+0800
+TZOFFSETTO:+0900
+END:DAYLIGHT
+BEGIN:STANDARD
+DTSTART:19401012T235959
+RDATE:19401012T235959
+RDATE:19411101T235959
+RDATE:19450901T235959
+RDATE:19460930T235959
+RDATE:19471031T235959
+RDATE:19480930T235959
+RDATE:19490528T000000
+TZNAME:CST
+TZOFFSETFROM:+0900
+TZOFFSETTO:+0800
+END:STANDARD
+BEGIN:DAYLIGHT
+DTSTART:19480501T000000
+RRULE:FREQ=YEARLY;UNTIL=19490430T160000Z;BYMONTH=5
+TZNAME:CDT
+TZOFFSETFROM:+0800
+TZOFFSETTO:+0900
+END:DAYLIGHT
+BEGIN:STANDARD
+DTSTART:19860914T020000
+RRULE:FREQ=YEARLY;UNTIL=19910914T170000Z;BYMONTH=9;BYMONTHDAY=11 12 13 14 15 16 17;BYDAY=SU
+TZNAME:CST
+TZOFFSETFROM:+0900
+TZOFFSETTO:+0800
+END:STANDARD
+BEGIN:DAYLIGHT
+DTSTART:19870412T020000
+RRULE:FREQ=YEARLY;UNTIL=19910413T180000Z;BYMONTH=4;BYMONTHDAY=11 12 13 14 15 16 17;BYDAY=SU
+TZNAME:CDT
+TZOFFSETFROM:+0800
+TZOFFSETTO:+0900
+END:DAYLIGHT
+END:VTIMEZONE
+"""
+
+def create_ics(uid: str, title: str, start_dt_cst: datetime.datetime, end_dt_cst: datetime.datetime, location: str, filepath: str):
+    """Create .ics file with correct timezone, complete VTIMEZONE like iOS does"""
     def format_cst(dt):
         return dt.strftime('%Y%m%dT%H%M%S')
 
+    now_utc = datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
+    tz_block = get_complete_timezone_def()
+
     ics_content = f"""BEGIN:VCALENDAR
+CALSCALE:GREGORIAN
 VERSION:2.0
 PRODID:-//PersonalAssistant//OpenClaw//EN
 BEGIN:VEVENT
-SUMMARY:{title}
-DTSTART;TZID=Asia/Shanghai:{format_cst(start_dt_cst)}
+CREATED:{now_utc}
 DTEND;TZID=Asia/Shanghai:{format_cst(end_dt_cst)}
-DTSTAMP:{datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}
+DTSTAMP:{now_utc}
+DTSTART;TZID=Asia/Shanghai:{format_cst(start_dt_cst)}
+LAST-MODIFIED:{now_utc}
+SEQUENCE:0
+SUMMARY:{title}
+LOCATION:{location}
 UID:{uid}
+TRANSP:OPAQUE
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:提醒事项
+TRIGGER:-PT15M
+UID:{uuid.uuid4().hex}
+X-APPLE-DEFAULT-ALARM:TRUE
+X-WR-ALARMUID:{uuid.uuid4().hex}
+END:VALARM
 END:VEVENT
+{tz_block}
 END:VCALENDAR
 """
 
@@ -69,13 +148,7 @@ def update_feishu_uid(record_id: str, uid: str):
     """Update Feishu Bitable record with iCloud UID using openclaw CLI"""
     # We use openclaw exec to call the tool since we can't import it here
     import json
-    cmd = f"""openclaw tool call feishu_bitable_app_table_record '{json.dumps({
-        "action": "update",
-        "app_token": APP_TOKEN,
-        "table_id": TABLE_ID,
-        "record_id": record_id,
-        "fields": {{"iCloud事件ID": uid}}
-    })}'"""
+    cmd = """openclaw tool call feishu_bitable_app_table_record '{"action": "update", "app_token": "%s", "table_id": "%s", "record_id": "%s", "fields": {"iCloud事件ID": "%s"}}'""" % (APP_TOKEN, TABLE_ID, record_id, uid)
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
     return result.returncode == 0
 
@@ -86,6 +159,7 @@ def main():
     parser.add_argument('--start-cst', required=True, help='Start time in CST: "YYYY-MM-DD HH:MM"')
     parser.add_argument('--end-cst', required=True, help='End time in CST: "YYYY-MM-DD HH:MM"')
     parser.add_argument('--category', default='家庭共享', help='Calendar category: 个人/工作/家庭共享')
+    parser.add_argument('--location', default='', help='Event location (optional)')
     args = parser.parse_args()
 
     # Get calendar config
@@ -109,7 +183,7 @@ def main():
 
     # Create .ics
     filepath = os.path.join(cal_config['vdir_dir'], f"{uid}.ics")
-    create_ics(uid, args.title, start_dt_cst, end_dt_cst, filepath)
+    create_ics(uid, args.title, start_dt_cst, end_dt_cst, args.location, filepath)
     print(f"Created .ics: {filepath}")
 
     # Update Feishu
